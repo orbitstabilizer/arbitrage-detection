@@ -3,33 +3,41 @@ import requests
 import json
 
 
-class BinanceAPI(websocket._app.WebSocketApp): 
+class BinanceAPI(websocket._app.WebSocketApp):
     BINANCE_API_URL = "wss://stream.binance.com:9443/ws"
-    def __init__(self, symbols: list = []):
+    def __init__(self, symbols: dict = {}):
         self.symbols = symbols
-        self.data = { symbol: {} for symbol in symbols}
-        super().__init__(self.BINANCE_API_URL, 
+        self.adj = self.setup_adj(symbols)
+        super().__init__(self.BINANCE_API_URL,
                          on_message=self.on_message,
                          on_error=self.on_error,
                          on_close=self.on_close, on_open=self.on_open)
 
+    def setup_adj(self, symbols: dict):
+        adj = {}
+        for u,v in self.symbols.values():
+            if u not in adj:
+                adj[u] = {}
+            if v not in adj:
+                adj[v] = {}
+            adj[u][v] = 0
+            adj[v][u] = 0
+        return adj
+
     def on_message(self,_, message):
         data = json.loads(message)
         update_id = data.get('u', -1)
-        symbol = data.get('s', "N/A")
+        symbol = data.get('s', "none").lower()
         best_bid_price = float(data.get('b', 0.0))
         best_ask_price = float(data.get('a', 0.0))
-        if symbol == "N/A":
-            return
-        self.data[symbol.lower()] = {
-            "update_id": update_id,
-            "best_bid_price": best_bid_price,
-            "best_ask_price": best_ask_price
-        }
+        if symbol != "none":
+            u,v = self.symbols[symbol]
+            self.adj[u][v] = best_bid_price
+            self.adj[v][u] = 1/best_ask_price
 
     def on_error(self, _, error):
         print(f"Error: {error}")
-    
+
     def on_close(self, _, close_status_code, close_msg):
         print("Closed WebSocket Connection...")
 
@@ -48,15 +56,16 @@ class BinanceAPI(websocket._app.WebSocketApp):
     @staticmethod
     def get_trading_pairs():
         api_url = "https://api.binance.com/api/v3/exchangeInfo"
-
         response = requests.get(api_url)
         data = response.json()
 
         if response.status_code == 200:
-            symbols = [symbol['symbol'].lower() for symbol in data['symbols']]
-            return symbols
+            symbols_and_tickers = { symbol['symbol'].lower():
+                                    (symbol['baseAsset'].lower(),
+                                    symbol['quoteAsset'].lower()) for symbol in data['symbols']}
+            return symbols_and_tickers
         else:
             print(f"Error: {data}")
-            return []
+            return {}
 
 
