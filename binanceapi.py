@@ -18,21 +18,18 @@ class BinanceAPI(websocket._app.WebSocketApp):
                          on_error=self.on_error,
                          on_close=self.on_close, on_open=self.on_open)
 
-    def update_eff(self, u):
+    def update_eff(self, u, v):
         # u -> v -> w -> u
-        for v in self.adj[u]: # u -> v
-            if v == u:
-                continue
-            for w in self.adj[v]: # v -> w
-                if w == v:
-                    continue
-                if w in self.adj[u]:
-                    self.eff[u] = self.adj[u][v] + self.adj[v][w] + self.adj[w][u]
-                    if (e:=self.eff[u]) > 0 and e != float('inf'):
-                        # print( f'{u} -> {v} -> {w}: {10**self.eff[u]}')
-                        self.arbitrage[(u,v,w)] = 10**self.eff[u]
-                    else:
-                        self.arbitrage.pop((u,v,w), None)
+        for w in self.adj[v]: # v -> w
+            if w in self.adj[u]:
+                self.eff[u] = self.adj[u][v] + self.adj[v][w] + self.adj[w][u]
+                tri = [u,v,w]
+                tri.sort()
+                if (e:=self.eff[u]) > 0 and e != float('inf'):
+                    # print( f'{u} -> {v} -> {w}: {10**self.eff[u]}')
+                    self.arbitrage[tuple(tri)] = 10**self.eff[u]
+                else:
+                    self.arbitrage.pop(tuple(tri), None)
 
     def setup_adj(self, symbols: dict):
         adj = {}
@@ -58,8 +55,8 @@ class BinanceAPI(websocket._app.WebSocketApp):
             u,v = self.symbols[symbol]
             self.adj[u][v] = log(best_bid_price)
             self.adj[v][u] = -log(best_ask_price)
-            self.update_eff(u)
-            self.update_eff(v)
+            self.update_eff(u, v)
+            self.update_eff(v, u)
 
 
     def on_error(self, _, error):
