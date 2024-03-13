@@ -1,6 +1,8 @@
 import websocket
 import requests
 import json
+from math import log10 as log
+
 
 
 class BinanceAPI(websocket._app.WebSocketApp):
@@ -8,10 +10,29 @@ class BinanceAPI(websocket._app.WebSocketApp):
     def __init__(self, symbols: dict = {}):
         self.symbols = symbols
         self.adj = self.setup_adj(symbols)
+        self.eff = { u: 0 for u in self.adj}
+        self.arbitrage = {}
+        self.first_message = True
         super().__init__(self.BINANCE_API_URL,
                          on_message=self.on_message,
                          on_error=self.on_error,
                          on_close=self.on_close, on_open=self.on_open)
+
+    def update_eff(self, u):
+        # u -> v -> w -> u
+        for v in self.adj[u]: # u -> v
+            if v == u:
+                continue
+            for w in self.adj[v]: # v -> w
+                if w == v:
+                    continue
+                if w in self.adj[u]:
+                    self.eff[u] = self.adj[u][v] + self.adj[v][w] + self.adj[w][u]
+                    if (e:=self.eff[u]) > 0 and e != float('inf'):
+                        # print( f'{u} -> {v} -> {w}: {10**self.eff[u]}')
+                        self.arbitrage[(u,v,w)] = 10**self.eff[u]
+                    else:
+                        self.arbitrage.pop((u,v,w), None)
 
     def setup_adj(self, symbols: dict):
         adj = {}
@@ -20,20 +41,26 @@ class BinanceAPI(websocket._app.WebSocketApp):
                 adj[u] = {}
             if v not in adj:
                 adj[v] = {}
-            adj[u][v] = 0
-            adj[v][u] = 0
+            adj[u][v] = float('inf')
+            adj[v][u] = float('inf')
         return adj
 
     def on_message(self,_, message):
+        if self.first_message:
+            print(message)
+            self.first_message = False
         data = json.loads(message)
         update_id = data.get('u', -1)
         symbol = data.get('s', "none").lower()
-        best_bid_price = float(data.get('b', 0.0))
-        best_ask_price = float(data.get('a', 0.0))
+        best_bid_price = float(data.get('b', float('inf')))
+        best_ask_price = float(data.get('a', float('inf')))
         if symbol != "none":
             u,v = self.symbols[symbol]
-            self.adj[u][v] = best_bid_price
-            self.adj[v][u] = 1/best_ask_price
+            self.adj[u][v] = log(best_bid_price)
+            self.adj[v][u] = -log(best_ask_price)
+            self.update_eff(u)
+            self.update_eff(v)
+
 
     def on_error(self, _, error):
         print(f"Error: {error}")
@@ -51,6 +78,7 @@ class BinanceAPI(websocket._app.WebSocketApp):
         }
 
         self.send(json.dumps(subscription_message))
+
 
 
     @staticmethod
