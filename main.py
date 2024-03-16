@@ -3,6 +3,14 @@ import time
 import threading
 
 def demo1():
+    """
+    Demo 1:
+    - Sets a small number of symbols to trade
+    - Starts the websocket on a separate thread
+    - Prints the adjacency list and the arbitrage opportunities
+    """
+
+
     symbols = BinanceAPI.get_trading_pairs()
     # filter = list(symbols.keys())[:10]
     filter = ["btcusdt", "ethusdt", "usdttry", "btctry", "ethbtc", "btceur"]
@@ -39,6 +47,12 @@ def demo1():
     print("Done!")
 
 def demo2():
+    """
+    Demo 2:
+    - Sets a large number of symbols to trade
+    - Starts the websocket on a separate thread
+    - With 0.1s intervals, prints the arbitrage opportunities
+    """
     symbols = BinanceAPI.get_trading_pairs()
     filter = list(symbols.keys())[:150]
     # filter = ["btcusdt", "ethusdt", "usdttry", "btctry", "ethbtc", "btceur"]
@@ -57,7 +71,7 @@ def demo2():
         time.sleep(0.1)
         # print(ws.adj)
         it = list(ws.arbitrage.items())
-        it.sort(key=lambda x: x[1])
+        it.sort(key=lambda x: -x[1])
         if len(it) > 0:
             print(*it, sep="\n")
             print('--'*10)
@@ -70,4 +84,4 @@ def demo2():
     
 
 if __name__ == "__main__":
-    demo2()
+    demo1()
