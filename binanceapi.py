@@ -7,7 +7,16 @@ from math import log10 as log
 
 class BinanceAPI(websocket._app.WebSocketApp):
     BINANCE_API_URL = "wss://stream.binance.com:9443/ws"
-    def __init__(self, symbols: dict = {}):
+    def __init__(self, symbols: dict = {})->None:
+        """
+        BinanceAPI class, inherits from websocket._app.WebSocketApp,
+        - used to get real-time data from binance websocket api
+        - calculates triangular arbitrage efficiency
+        - gets trading pairs from binance api
+
+        params:
+            symbols: { trading_pair: (base_asset, quote_asset) }
+        """
         self.symbols = symbols
         self.adj = self.setup_adj(symbols)
         self.eff = { u: 0 for u in self.adj}
@@ -18,7 +27,17 @@ class BinanceAPI(websocket._app.WebSocketApp):
                          on_error=self.on_error,
                          on_close=self.on_close, on_open=self.on_open)
 
-    def update_eff(self, u, v):
+
+    def update_eff(self, u:str, v:str)->None:
+        """
+        Update triangular arbitrage efficiency, given the edge u -> v
+        Checks if u -> v -> w -> u is an arbitrage opportunity for all w
+        
+        params:
+        u: str
+        v: str
+
+        """
         # u -> v -> w -> u
         for w in self.adj[v]: # v -> w
             if w in self.adj[u]:
@@ -26,12 +45,18 @@ class BinanceAPI(websocket._app.WebSocketApp):
                 tri = [u,v,w]
                 tri.sort()
                 if (e:=self.eff[u]) > 0 and e != float('inf'):
-                    # print( f'{u} -> {v} -> {w}: {10**self.eff[u]}')
                     self.arbitrage[tuple(tri)] = 10**self.eff[u]
                 else:
                     self.arbitrage.pop(tuple(tri), None)
 
-    def setup_adj(self, symbols: dict):
+    def setup_adj(self, symbols: dict) -> dict:
+        """
+        Setup adjacency list for the graph of exchange rates
+        initializes weights to infinity
+
+        params:
+            symbols: { trading_pair: (base_asset, quote_asset) }
+        """
         adj = {}
         for u,v in self.symbols.values():
             if u not in adj:
@@ -42,7 +67,12 @@ class BinanceAPI(websocket._app.WebSocketApp):
             adj[v][u] = float('inf')
         return adj
 
-    def on_message(self,_, message):
+    def on_message(self,_, message: str)->None:
+        """
+        Socket message handler 
+        params:
+            message: str
+        """
         if self.first_message:
             print(message)
             self.first_message = False
@@ -51,6 +81,7 @@ class BinanceAPI(websocket._app.WebSocketApp):
         symbol = data.get('s', "none").lower()
         best_bid_price = float(data.get('b', float('inf')))
         best_ask_price = float(data.get('a', float('inf')))
+        print(f"Symbol: {symbol}, Bid: {best_bid_price}, Ask: {best_ask_price}")
         if symbol != "none":
             u,v = self.symbols[symbol]
             self.adj[u][v] = log(best_bid_price)
@@ -59,13 +90,23 @@ class BinanceAPI(websocket._app.WebSocketApp):
             self.update_eff(v, u)
 
 
-    def on_error(self, _, error):
+    def on_error(self, _, error: Exception)->None:
+        """
+        Socket error handler
+        """
         print(f"Error: {error}")
 
-    def on_close(self, _, close_status_code, close_msg):
+    def on_close(self, _, close_status_code: int , close_msg : str)->None:
+        """
+        Socket close handler
+        """
         print("Closed WebSocket Connection...")
 
     def on_open(self, _):
+        """
+        Socket open handler
+        Subscribes to the binance websocket api for the self.symbols trading pairs
+        """
         subscription_message = {
             "method": "SUBSCRIBE",
             "params": [
@@ -80,6 +121,9 @@ class BinanceAPI(websocket._app.WebSocketApp):
 
     @staticmethod
     def get_trading_pairs():
+        """
+        Get trading pairs from binance api
+        """
         api_url = "https://api.binance.com/api/v3/exchangeInfo"
         response = requests.get(api_url)
         data = response.json()
